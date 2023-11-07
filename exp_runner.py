@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from shutil import copyfile
 from tqdm import tqdm
 from pyhocon import ConfigFactory
-from models.dataset import Dataset
+from models.dataset import Dataset, BlenderDataset
 from models.fields import RenderingNetwork, FieldNetwork, SingleVarianceNetwork
 from models.tensor4d import Tensor4D
 from models.renderer import NeuSRenderer
@@ -32,7 +32,8 @@ class Runner:
         self.conf['dataset.data_dir'] = self.conf['dataset.data_dir'].replace('CASE_NAME', case)
         self.base_exp_dir = self.conf['general.base_exp_dir']
         os.makedirs(self.base_exp_dir, exist_ok=True)
-        self.dataset = Dataset(self.conf['dataset'])
+        self.is_blender = self.conf['dataset'].get_bool('is_blender', default=False)
+        self.dataset = BlenderDataset(self.conf['dataset']) if self.is_blender else Dataset(self.conf['dataset'])
         self.g_nums = self.conf['dataset']['g_nums']
         self.iter_step = 0
         self.flow = self.conf.get_bool('model.flow', default=False)
