@@ -239,8 +239,8 @@ class BlenderDataset:
                 metas[s] = json.load(fp)
         self.images_lis = sorted(glob(os.path.join(self.data_dir, 'train/*.png')), key=lambda x: int(x.split('.')[0].split('_')[-1]))
         # if self.data_dir.split('/')[-2] == 'lego':
-        #     self.images_lis = self.images_lis[1:]
-        #     #self.images_lis.append('/data00/yzy/Git_Project/data/dynamic/D-NeRF/lego/val/r_0.png')
+        #     # self.images_lis = self.images_lis[1:]
+        #     self.images_lis.append('/data00/yzy/Git_Project/data/dynamic/D-NeRF/lego/val/r_0.png')
         all_imgs = []
         all_poses = []
         all_masks = []
@@ -292,9 +292,12 @@ class BlenderDataset:
         self.errors = self.errors.permute(0, 2, 3, 1)
         self.n_images = self.images.shape[0]
 
+        self.fid_list = [torch.LongTensor(np.array([idx])) for idx in range(self.n_images)]
+        # if self.data_dir.split('/')[-2] == 'lego':
+        #     self.fid_list[-1] = torch.LongTensor(np.array([0]))
         self.pose_all = torch.from_numpy(np.concatenate(all_poses, 0)).to(self.device)
-        self.fid_all = torch.from_numpy(np.concatenate(all_times, 0)).to(self.device)
-        self.time_emb_list = self.fid_all
+        self.fid_all = torch.stack(self.fid_list).to(self.device)
+        self.time_emb_list = torch.from_numpy(np.concatenate(all_times, 0)).to(self.device)
 
         self.H, self.W = self.images[0].shape[:2]
         self.image_pixels = self.H * self.W
@@ -308,10 +311,26 @@ class BlenderDataset:
              [0, 0, 0, 1]]).to(self.device)
         self.intrinsics_all = intrinsics.expand(self.n_images, -1, -1)
         self.intrinsics_all_inv = torch.inverse(self.intrinsics_all)  # [n_images, 4, 4]
-        self.object_bbox_min = np.array([-1.01, -1.01, -1.01, 1.0])  # hard code bbox
-        self.object_bbox_max = np.array([1.01, 1.01, 1.01, 1.0])
+        self.object_bbox_min = np.array([-1.01, -1.01, -1.01])  # hard code bbox
+        self.object_bbox_max = np.array([1.01, 1.01, 1.01])
+        self.process_radius()
 
         print('Load data: End')
+
+    def process_radius(self):
+        for img_idx in tqdm(range(self.images.shape[0])):
+            tx = torch.linspace(0, self.W - 1, self.W, device=self.device)
+            ty = torch.linspace(0, self.H - 1, self.H, device=self.device)
+            pixels_x, pixels_y = torch.meshgrid(tx, ty)
+            p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=-1) # W, H, 3
+            rays_v = torch.matmul(self.intrinsics_all_inv[img_idx, None, None, :3, :3], p[:, :, :, None]).squeeze()  # W, H, 3
+            rays_v = torch.matmul(self.pose_all[img_idx, None, None, :3, :3], rays_v[:, :, :, None]).squeeze()  # W, H, 3
+            dx = torch.sqrt(torch.sum((rays_v[:-1, :, :] - rays_v[1:, :, :]) ** 2, dim=-1))
+            dx = torch.cat([dx, dx[-2:-1, :]], dim=0)
+            # Cut the distance in half, and then round it out so that it's
+            # halfway between inscribed by / circumscribed about the pixel.
+            radii = dx[..., None] * 2 / np.sqrt(12)
+            self.radius[img_idx] = radii.detach().cpu()   # W H 3
 
     def gen_rays_at(self, img_idx, resolution_level=1):
         """
