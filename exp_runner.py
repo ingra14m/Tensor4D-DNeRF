@@ -15,6 +15,7 @@ from models.fields import RenderingNetwork, FieldNetwork, SingleVarianceNetwork
 from models.tensor4d import Tensor4D
 from models.renderer import NeuSRenderer
 from models.mask import Mask3D
+from metrics import *
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 class Runner:
@@ -411,6 +412,92 @@ class Runner:
                                         'normals',
                                         '{:0>8d}_{}_{}.png'.format(self.iter_step, i, idx)),
                            normal_img[..., i])
+
+
+    def validate_image_all(self, is_train=True, resolution_level=-1):
+        psnrs = []
+        ssims = []
+        Lpipss = []
+
+        dataset_name = 'train' if is_train else 'test'
+        render_dir = os.path.join(self.base_exp_dir, 'render_{}_{}'.format(dataset_name, self.iter_step))
+        for idx in tqdm(range(self.dataset.n_images)):
+            print('Validate: iter: {}, camera: {}'.format(self.iter_step, idx))
+            if resolution_level < 0:
+                resolution_level = self.validate_resolution_level
+
+            rays_o, rays_d, rays_r = self.dataset.gen_rays_at(idx, resolution_level=resolution_level)
+            fid = self.dataset.fid_all[idx]
+            time_emb = self.dataset.time_emb_list[idx]
+            H, W, _ = rays_o.shape
+            rays_o = rays_o.reshape(-1, 3).split(self.batch_size)
+            rays_d = rays_d.reshape(-1, 3).split(self.batch_size)
+            rays_r = rays_r.reshape(-1, 1).split(self.batch_size)
+            out_rgb_fine = []
+            out_normal_fine = []
+
+            for rays_o_batch, rays_d_batch, rays_r_batch in zip(rays_o, rays_d, rays_r):
+                near, far = self.dataset.near_far_from_sphere(rays_o_batch, rays_d_batch)
+                background_rgb = torch.ones([1, 3]) if self.use_white_bkgd else None
+                render_out = self.renderer.render(rays_o_batch,rays_d_batch,rays_r_batch,near,far,fid,time_emb,background_rgb=background_rgb)
+
+                def feasible(key):
+                    return (key in render_out) and (render_out[key] is not None)
+
+                if feasible('color_fine'):
+                    out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+                if feasible('gradients') and feasible('weights'):
+                    n_samples = self.renderer.n_samples + self.renderer.n_importance
+                    normals = render_out['gradients'] * render_out['weights'][:, :n_samples, None]
+                    if feasible('inside_sphere'):
+                        normals = normals * render_out['inside_sphere'][..., None]
+                    normals = normals.sum(dim=1).detach().cpu().numpy()
+                    out_normal_fine.append(normals)
+
+                del render_out
+
+            img_fine = None
+            if len(out_rgb_fine) > 0:
+                img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255)
+
+            normal_img = None
+            if len(out_normal_fine) > 0:
+                normal_img = np.concatenate(out_normal_fine, axis=0)
+                rot = np.linalg.inv(self.dataset.pose_all[idx, :3, :3].detach().cpu().numpy())
+                normal_img = (np.matmul(rot[None, :, :], normal_img[:, :, None])
+                              .reshape([H, W, 3]) * 128 + 128).clip(0, 255)
+
+            image_dir = os.path.join(render_dir, 'validations_fine')
+            normal_dir = os.path.join(render_dir, 'normals')
+            os.makedirs(image_dir, exist_ok=True)
+            os.makedirs(normal_dir, exist_ok=True)
+
+            error = self.dataset.errors[idx]
+            error = error / torch.max(error + 1e-8)
+            cv.imwrite(os.path.join(image_dir, '{}_err.png'.format(idx)),
+                       (error.detach().cpu().numpy() * 255).astype(np.uint8))
+
+            image_pred = torch.Tensor(img_fine) / 255.
+            image_gt = torch.Tensor(
+                self.dataset.image_at(idx, resolution_level=resolution_level).astype(np.float32)) / 255.
+            psnr = compute_psnr(image_pred, image_gt)
+            ssim = compute_ssim(image_pred, image_gt)
+            Lpips = compute_lpips(image_pred, image_gt)
+
+            psnrs.append(psnr.item())
+            ssims.append(ssim.item())
+            Lpipss.append(Lpips.item())
+
+            with open(os.path.join(render_dir, "metrics.txt"), 'a') as f:
+                f.write("PSNR={}, ssim={}, lpips={}\n".format(psnr.item(), ssim.item(), Lpips.item()))
+
+            cv.imwrite(os.path.join(image_dir, '{}.png'.format(idx)),
+                       np.array(img_fine))
+            cv.imwrite(os.path.join(normal_dir, '{}.png'.format(idx)), normal_img)
+
+        with open(os.path.join(render_dir, "metrics.txt"), 'a') as f:
+            f.write("Mean of psnr={}, ssim={}, lpips={}\n".format(np.mean(psnrs), np.mean(ssims), np.mean(Lpipss)))
+
                 
     def render_novel_image(self, idx_0, idx_1, ratio, resolution_level, fid, time_emb):
         """
@@ -515,6 +602,9 @@ if __name__ == '__main__':
     parser.add_argument('--n_frames', type=int, default=30)
     parser.add_argument('--inter_reso_level', type=int, default=2)
     
+    # validate_image
+    parser.add_argument('--idx', type=int, default=0)
+    parser.add_argument('--render_train', action='store_false')
 
     args = parser.parse_args()
 
@@ -524,6 +614,14 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         runner.train()
+    elif args.mode == 'validate_image':
+        runner.tensor4d.feature_plane.downsample = False
+        runner.tensor4d.feature_plane.level = 2
+        runner.validate_image(idx=args.idx)
+    elif args.mode == 'render_all':
+        runner.tensor4d.feature_plane.downsample = False
+        runner.tensor4d.feature_plane.level = 2
+        runner.validate_image_all(is_train=args.render_train)
     elif args.mode.startswith('interpolate'):  # Interpolate views given two image indices
         # runner.validate_image(0)
         _, img_idx_0, img_idx_1 = args.mode.split('_')
