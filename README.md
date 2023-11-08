@@ -32,10 +32,11 @@ einops
 # train jumpingjacks
 python exp_runner.py --case d-nerf --mode train --conf confs/D-NeRF/t4d_jump.conf --gpu 0
 # render & metrics for jumpingjacks
-python exp_runner.py --mode render_all --conf confs/t4d_jump.conf --gpu 0 --is_continue
+python exp_runner.py --case d-nerf --mode render_all --conf confs/t4d_jump.conf --gpu 0 --is_continue
 ```
 
 - For rendering and assessing metrics, the default measurement pertains to the **training set**. To evaluate the test set, you need to modify the [splits](https://github.com/ingra14m/Tensor4D-DNeRF/blob/a71a008bc1e867c29b1f8f267ea1cbb17a665b79/models/dataset.py#L235) by changing `train` to `test`.
+- You can change the rendering resolution through `validate_resolution_level` in the config file.
 
 ### Run the standard Tensor4D 
 
