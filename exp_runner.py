@@ -482,7 +482,7 @@ class Runner:
                 self.dataset.image_at(idx, resolution_level=resolution_level).astype(np.float32)) / 255.
             psnr = compute_psnr(image_pred, image_gt)
             ssim = compute_ssim(image_pred, image_gt)
-            Lpips = compute_lpips(image_pred, image_gt)
+            Lpips = compute_lpips(image_pred.cuda(), image_gt.cuda())
 
             psnrs.append(psnr.item())
             ssims.append(ssim.item())
@@ -604,7 +604,7 @@ if __name__ == '__main__':
     
     # validate_image
     parser.add_argument('--idx', type=int, default=0)
-    parser.add_argument('--render_train', action='store_false')
+    parser.add_argument('--render_train', action='store_true')
 
     args = parser.parse_args()
 
