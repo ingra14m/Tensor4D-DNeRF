@@ -1,20 +1,11 @@
 # Tensor4D : Efficient Neural 4D Decomposition for High-fidelity Dynamic Reconstruction and Rendering
-### [Project Page](https://liuyebin.com/tensor4d/tensor4d.html) | [Paper](https://arxiv.org/abs/2211.11610) | [Data]()
-
-![image](assets/teaser.jpg)
+### [Project Page](https://liuyebin.com/tensor4d/tensor4d.html) | [Paper](https://arxiv.org/abs/2211.11610) | [Data](https://drive.google.com/file/d/1uHVyApwqugXTFuIRRlE4abTW8_rrVeIK/view)
 
 > [Tensor4D : Efficient Neural 4D Decomposition for High-fidelity Dynamic Reconstruction and Rendering](https://arxiv.org/pdf/2211.11610.pdf)  
 > Ruizhi Shao, Zerong Zheng, Hanzhang Tu, Boning Liu, Hongwen Zhang, Yebin Liu.
 > (**CVPR 2023 Highlight**)
 
-This is the official implementation of Tensor4D: Efficient Neural 4D Decomposition for High-fidelity Dynamic Reconstruction and Rendering. Tensor4D can efficiently achieve high-fidelity dynamic reconstruction and rendering with only sparse views or monocular camera:
-
-
-![image](assets/thumbsup.gif)
-![image](assets/dance.gif)
-![image](assets/lego.gif)
-
-
+This is an unofficial implementation of Tensor4D with support for the D-NeRF dataset. However, I cannot reproduce the impeccable results in the D-NeRF dataset as presented in the [Tensor4D paper](https://arxiv.org/abs/2211.11610). To preclude any suspicion that my own paper intentionally downplays the performance metrics of Tensor4D, I have made this repository public. Everyone is able to review my **commit history** to ascertain that I have not altered any of the core functions of Tensor4D. I think there maybe some bugs in my implementation, since Tensor4D is the CVPR 2023 highlight paper.
 
 ## Installation
 
@@ -33,20 +24,18 @@ scipy
 einops
 ```
 
-We have tested Tensor4D with several PyTorch versions including 1.13 and 2.0. It is recommended to use PyTorch with these versions to ensure compatibility. In addition, we find that pyhocon==0.3.60 is not compatible with our project.
+## Run the code on D-NeRF dataset
 
-## Run the code on Tensor4D dataset
+> You need to change `data_dir` in the config file to read D-NeRF Dataset
 
-### Download Tensor4D samples
+```shell
+# train jumpingjacks
+python exp_runner.py --case d-nerf --mode train --conf confs/D-NeRF/t4d_jump.conf --gpu 0
+# render & metrics for jumpingjacks
+python exp_runner.py --mode render_all --conf confs/t4d_jump.conf --gpu 0 --is_continue
+```
 
-We have provided several samples for Tensor4D training. You can download the test samples using the following links:
-
-- [thumbsup_v4](https://mailstsinghuaeducn-my.sharepoint.com/:u:/g/personal/shaorz20_mails_tsinghua_edu_cn/EbDH2JH5MplMk7iV4JYdtSUBl88UBBBBu24lUqCJ_65hMQ?e=PEfQSs) : A man giving thumbs up and waving, captured by 4 RGB cameras focusing on the front face.
-- [dance_v4](https://mailstsinghuaeducn-my.sharepoint.com/:u:/g/personal/shaorz20_mails_tsinghua_edu_cn/EfpMTnVxCqNKvLR35R3a6TIBQ2i1e0NmsEJys2cCIcsxuA?e=oWpIkA) : A woman dancing in a gorgeous dress, captured by 4 RGB cameras focusing on the front face. 
-- [boxing_v12](https://mailstsinghuaeducn-my.sharepoint.com/:u:/g/personal/shaorz20_mails_tsinghua_edu_cn/EcmHCmJ9NehAmtsCuBTcKxYBZSptnNPXuJrhKgCltW7Grw?e=WawpWb) : A man in a down jacket boxing, captured by 12 RGB cameras in a circle.
-- [lego_v1](https://mailstsinghuaeducn-my.sharepoint.com/:u:/g/personal/shaorz20_mails_tsinghua_edu_cn/EcX8qOf9ODhGnwh_FcuR-eQBRvLFWdslN57jbKhUdOWObg?e=gkVoIn) : A LEGO excavator with a raised arm, captured by monocular camera, similar with D-NeRF dataset.
-
-The format of our test samples is the same with [NeuS](https://github.com/Totoro97/NeuS), we will also provide scripts that convert NeRF blender dataset to our dataset.
+- For rendering and assessing metrics, the default measurement pertains to the **training set**. To evaluate the test set, you need to modify the [splits](https://github.com/ingra14m/Tensor4D-DNeRF/blob/a71a008bc1e867c29b1f8f267ea1cbb17a665b79/models/dataset.py#L235) by changing `train` to `test`.
 
 ### Run the standard Tensor4D 
 
@@ -90,10 +79,6 @@ python exp_runner.py --case dance_v4 --mode train --conf confs/t4d_dance_img.con
 # Train Tensor4D with image guidance on boxing_v12
 python exp_runner.py --case boxing_v12 --mode train --conf confs/t4d_boxing_img.conf --gpu 0
 ```
-
-Tensor4D with image guidance can achieve more efficient convergence within 5k iterations:
-
-![image](assets/img_guide_results.png)
 
 ### Config documentation
 
